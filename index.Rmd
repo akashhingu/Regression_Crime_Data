@@ -1,0 +1,161 @@
+---
+title: "Regression Analysis on Crime"
+editor_options:
+  markdown:
+    wrap: 100
+output: html_document
+#date: "`r Sys.Date()`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+**Import Packages and IDE Prep**
+```{r}
+#rm(list = ls())
+library(car)
+library(rstatix)
+set.seed(2)
+options(scipen=999)
+```
+
+
+**Read in Dataset(s)**
+```{r}
+crime_dataset = read.table('uscrime.txt',header = TRUE)
+head(crime_dataset,5)
+```
+
+**Exploratory Data Analysis**
+```{r}
+#dimensions
+dim(crime_dataset)
+
+#summary stats
+summary(crime_dataset)
+
+#Visualizations
+hist(crime_dataset$Crime)
+
+boxplot(crime_dataset$Crime)
+
+boxplot.stats(crime_dataset$Crime)$out
+
+#outlier identification
+identify_outliers(
+  data = crime_dataset,
+  variable = "Crime"
+)
+
+
+
+```
+
+
+
+**Creating Linear Regression Model on Crime**
+```{r}
+model_lm = lm(Crime~., data = crime_dataset)
+summary(model_lm)
+
+##Using AIC to estimate quality of model
+AIC(model_lm)
+```
+**LM model: Crime = 87.83M - 3.8So + 188.32Ed + 192.80Po1 - 109.42Po2 - 663.83LF + 17.4M.F - 0.73Pop + 4.2NW - 5827.1U1 + 167.8U2 + 0.96Wealth + 70.67Ineq - 4855.27Prob - 3.48Time - 5984.29**
+
+**AIC = 650.03**
+**R-squared = 80.31%**
+
+
+**Plot lm model**
+**Lets plot the Ineq against Crime & Ed against Crime since they have the lowest p-values**
+```{r}
+
+plot(crime_dataset$Ineq,crime_dataset$Crime)
+abline(lm(Crime ~ Ineq, data = crime_dataset))
+
+plot(crime_dataset$Ed,crime_dataset$Crime)
+abline(lm(Crime ~ Ed, data = crime_dataset))
+
+```
+
+
+**Although the regression lines don't seem to show much correlation, we do know there is some correlation and therefore requires further analysis**
+
+
+**Partial regression plots to plot multiple predictors linear regression**
+
+
+```{r}
+avPlots(model_lm)
+```
+
+
+
+**We can see that the partial regression plots do show some correlation, though none of the predictors stand out as perfectly correlated to Crime**
+
+
+
+
+
+**Let's use stepwise regression to automatically select predictors to use in a regression model**
+**Stepwise regression removes/adds predictors one at a time and uses statistical significance to find the best model.**
+```{r}
+step(model_lm)
+
+
+#create model from stepwise analysis
+stepwise_lm = lm(formula = Crime ~ M + Ed + Po1 + M.F + U1 + U2 + Ineq + Prob, 
+   data = crime_dataset)
+
+```
+
+**Stepwise LM model: Crime = 93.32M + 180.12Ed + 102.65Po1 + 22.34M.F - 6086.63 U1 + 187.35U2 + 61.33Ineq - 3796.03Prob - 6426.10**
+
+**AIC = 639.32**
+**R-squared = 78.89%**
+
+
+
+
+**Lets compare quality of each model.**
+```{r}
+
+cat('AIC for 15 Predictor LM:',AIC(model_lm))
+cat('R-squared for 15 Predictor LM:',summary(model_lm)$r.squared *100)
+
+
+cat('AIC for 8 Predictor Stepwise LM:',AIC(stepwise_lm))
+cat('R-squared for 8 Predictor Stepwise LM:',summary(stepwise_lm)$r.squared *100)
+
+
+```
+**Comparing the AIC of the 15 predictor model to the stepwise optimized 8 predictor model we see that the stepwise model has a lower AIC. We also see that the R-squared values are similar between the models. This signals there is some overfitting in the 15 predictor model. This also suggests the quality of the 8 predictor model's fit is greater than the larger model. As next steps we can also split the data into train and test datasets for further quality evaluation.**
+
+**Predicting Crime output.**
+```{r}
+##configure prediction vector
+new_predict_row = c(14.0,0,10.0,12.0,15.5,0.640,94.0,150,1.1,0.120,3.6,3200,20.1,0.04,39.0)
+
+crime_predict_on = crime_dataset
+
+crime_predict_on = crime_predict_on[-c(1:47),-16 ]
+
+crime_predict_on[nrow(crime_predict_on)+1,] = new_predict_row
+
+crime_predict_on ##check new dataframe
+
+
+
+##predictions
+#predict on 15 predictor model
+predict(model_lm, newdata = crime_predict_on)
+
+#predict on 8 predictor model
+predict(stepwise_lm, newdata = crime_predict_on)
+
+
+```
+**The larger 15 predictor model predicts a Crime value of 155 while the stepwise 8 predictor model predicts a much larger Crime value of 1038. These values are in stark contrast to each other. However, looking back at the quantile Crime values from our earlier analysis we see that 155 is lower than the minimum Crime value of 342. This might make the value of 155 an outlier. The stepwise model's prediction of 1038 is much more in line with the quantile values as this value would fit in within the 3rd quantile of Crime values. Given the quality of fit for the stepwise model and our findings here I'm more inclined to trust the stepwise model's predictions over the larger model's predictions.**
